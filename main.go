@@ -2,49 +2,106 @@ package main
 
 import (
     "bufio"
+    "errors"
     "fmt"
     "net"
     "os"
     "time"
     "sync"
+    "strconv"
+    "log"
 )
 
 const (
-    port_conn = "4000"
-    conn_type = "tcp"
-    max_conn = 5
+    portConn = "4000"
+    connType = "tcp"
+    maxConn = 5
+    numbersLen = 1024
 )
 
 func main() {
+  f := StartLogger()
+  defer f.Close()
   StartServer()
+}
+
+func StartLogger () *os.File {
+  f, err := os.OpenFile("numbers.log", os.O_RDWR | os.O_CREATE | os.O_TRUNC, 0666)
+  if err != nil {
+    log.Fatalf("error opening file: %v", err)
+  }
+  log.SetFlags(0)
+  log.SetOutput(f)
+  return f
+}
+
+type Numbers interface {
+  ProcessNumbers()
+  Add(number int)
+}
+type Number struct {
+  duplicate int
+  unique int
+  numbers chan int
+  totalNumbers []int
+}
+func NewNumbers () *Number {
+  return &Number{0, 0, make (chan int, numbersLen), make([]int, 0)}
+}
+func (n *Number) ProcessNumbers () {
+  for {
+    number := <- n.numbers
+    if n.exist(number) {
+      n.duplicate++
+    } else {
+      n.unique++
+      log.Println(number)
+      fmt.Println(number)
+      n.totalNumbers = append(n.totalNumbers, number)
+    }
+  }
+}
+func (n *Number) exist(number int) bool {
+    for _, item := range n.totalNumbers {
+        if item == number {
+            return true
+        }
+    }
+    return false
+}
+func (n *Number) Add(number int) {
+  n.numbers <- number
 }
 
 type Server struct{ 
   quit chan bool
   exit chan bool
   listen net.Listener
+  number Numbers
 }
 
 func StartServer() {
-    s := &Server{make(chan bool, max_conn), make (chan bool), nil}
+    s := &Server{make(chan bool, maxConn), make (chan bool), nil, nil}
     s.Run()
 }
 
 func (s *Server) Run() {
-    s.createListener(conn_type, port_conn)
+    s.number = NewNumbers()
+    go s.number.ProcessNumbers()
+    s.createListener(connType, portConn)
     defer s.listen.Close()
     go s.acceptConnetions()
     <- s.exit 
     time.Sleep(time.Second)
 }
-func (s *Server) createListener (conn_type string, port string) {
-  listen, err := net.Listen(conn_type, ":"+port)
+func (s *Server) createListener (connType string, port string) {
+  listen, err := net.Listen(connType, ":"+port)
   if err != nil {
       fmt.Println("Error listening:", err.Error())
       os.Exit(1)
   }
-  s.listen = NewLimitedListener(max_conn, listen)
-  fmt.Println("Listening on", port_conn)
+  s.listen = NewLimitedListener(maxConn, listen)
+  fmt.Println("Listening on", port)
 }
 func (s *Server) acceptConnetions () {
   for {
@@ -53,19 +110,21 @@ func (s *Server) acceptConnetions () {
         fmt.Println("Error accepting: ", err.Error())
         os.Exit(1)
     }
-    // Handle connections in a new goroutine.
     go s.handleConnection(conn)
   }
 }
 func (s *Server) handleConnection (conn net.Conn) {
     defer conn.Close()
-    input := make(chan string) // input stream
+    input := make(chan string)
     errc := make (chan error)
-    go s.readAsync(conn, input, errc) // go and read
+    go s.readAsync(conn, input, errc)
     for {
-        select { // read or close
+        select {
         case message := <-input:
-          s.processMessage(message)
+          err := s.processMessage(message)
+          if err != nil {
+            return
+          }
         case <-s.quit:
           conn.Write([]byte("The Server is stopping...\n"))
           return
@@ -74,11 +133,21 @@ func (s *Server) handleConnection (conn net.Conn) {
         }
     }
 }
-func (s *Server) processMessage (message string) {
+func (s *Server) processMessage (message string) error {
   fmt.Println("Message Received:", message)
   if message == "terminated" {
     s.Stop()
+    return nil
   }
+  if len(message) != 9 {
+    return errors.New("Message should have more than 9 digist")
+  }
+  number, err := strconv.Atoi(message)
+  if err != nil {
+    return err
+  }
+  s.number.Add(number)
+  return nil
 }
 func (s *Server) readAsync(conn net.Conn, lines chan string, errc chan error) {
     defer conn.Close()
@@ -89,7 +158,7 @@ func (s *Server) readAsync(conn net.Conn, lines chan string, errc chan error) {
     errc <- scann.Err()
 }
 func (s *Server) Stop() {
-    for i:= 0; i < max_conn; i++ {
+    for i:= 0; i < maxConn; i++ {
       s.quit <- true
     }
     s.exit <- true
@@ -146,7 +215,7 @@ func (c *LimitedConn) Read(b []byte) (n int, err error) {
   return c.Conn.Read(b)
 }
 func (c *LimitedConn) Close() error {
-    c.sem <- true // release
+    c.sem <- true
     return c.Conn.Close()
 }
 func (c *LimitedConn) Write(b []byte) (int, error) {
