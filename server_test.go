@@ -51,6 +51,15 @@ func TestSend_terminated_message(t *testing.T) {
 
 }
 
+func TestCreate_listener (t *testing.T) {
+	server := &Server{make(chan bool, maxConn), make (chan bool), nil, nil}
+	server.createListener("tcp", "3500")
+	if server.listen == nil {
+		t.Error("server listener should not be nil", server.listen)
+	}
+	defer server.listen.Close()
+}
+
 func TestLess_than_9_Digist (t *testing.T) {
     if err := srv.processMessage("1094"); err == nil {
         t.Error("should throw error when less than 9 digist")
