@@ -1,26 +1,25 @@
 package main
 
 import (
+  "net"
 	"sync"
-	"net"
 	"time"
 )
 
-
 type LimitedListener struct {
-    sync.Mutex
-    net.Listener
-    sem chan bool
+  sync.Mutex
+  net.Listener
+  sem chan bool
 }
 func NewLimitedListener(count int, l net.Listener) *LimitedListener {
-    sem := make(chan bool, count)
-    for i := 0; i < count; i++ {
-        sem <- true
-    }
-    return &LimitedListener{
-        Listener: l,
-        sem:      sem,
-    }
+  sem := make(chan bool, count)
+  for i := 0; i < count; i++ {
+    sem <- true
+  }
+  return &LimitedListener{
+    Listener: l,
+    sem:      sem,
+  }
 }
 func (l *LimitedListener) Addr() net.Addr { 
   return l.Listener.Addr()
@@ -29,12 +28,12 @@ func (l *LimitedListener) Close() error {
   return l.Listener.Close()
 }
 func (l *LimitedListener) Accept() (net.Conn, error) {
-    <-l.sem
-    c, err := l.Listener.Accept()
-    if err!=nil {
-      return nil, err
-    }
-    return NewLimitedConn(l.sem, c), nil
+  <-l.sem
+  c, err := l.Listener.Accept()
+  if err!=nil {
+    return nil, err
+  }
+  return NewLimitedConn(l.sem, c), nil
 }
 func (l *LimitedListener) GetNumberConections () int {
   return len(l.sem)
@@ -57,8 +56,8 @@ func (c *LimitedConn) Read(b []byte) (n int, err error) {
   return c.Conn.Read(b)
 }
 func (c *LimitedConn) Close() error {
-    c.sem <- true
-    return c.Conn.Close()
+  c.sem <- true
+  return c.Conn.Close()
 }
 func (c *LimitedConn) Write(b []byte) (int, error) {
   return c.Conn.Write(b)

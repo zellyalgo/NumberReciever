@@ -1,9 +1,9 @@
 package main
 
 import (
+  "fmt"
 	"log"
 	"time"
-	"fmt"
 )
 
 type Numbers interface {

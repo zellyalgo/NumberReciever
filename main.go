@@ -1,15 +1,15 @@
 package main
 
 import (
-    "os"
-    "log"
+  "log"
+  "os"    
 )
 
 const (
-    portConn = "4000"
-    connType = "tcp"
-    maxConn = 5
-    numbersLen = 1024
+  portConn = "4000"
+  connType = "tcp"
+  maxConn = 5
+  numbersLen = 1024
 )
 
 func main() {
